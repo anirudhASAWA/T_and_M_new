@@ -295,6 +295,93 @@ function toggleSubprocessTimer(processIndex, subprocessIndex) {
   // Re-render interface to ensure all UI elements are updated
   renderInterface();
 }
+
+// Add this function to your script.js file
+function fixMobileKeyboardIssue() {
+  // Create a global variable to track focused element
+  window.currentlyFocusedElement = null;
+  
+  // Remove ALL existing focus/blur/touch handlers from inputs
+  document.querySelectorAll('input, select, textarea').forEach(input => {
+    // Clone the element to remove all event listeners
+    const clone = input.cloneNode(true);
+    input.parentNode.replaceChild(clone, input);
+  });
+  
+  // Add strong CSS fixes
+  const styleEl = document.createElement('style');
+  styleEl.id = 'aggressive-mobile-fix';
+  styleEl.innerHTML = `
+    /* Force proper input behavior */
+    input, select, textarea {
+      -webkit-user-select: text !important;
+      user-select: text !important;
+      -webkit-appearance: none;
+      font-size: 16px !important;
+      touch-action: manipulation;
+    }
+    
+    /* Prevent any touch interference */
+    body.has-keyboard-open {
+      touch-action: pan-x pan-y !important;
+      height: auto !important;
+      position: static !important;
+      overflow: auto !important;
+      padding-bottom: 300px !important;
+    }
+    
+    /* Make sure active inputs are clearly styled */
+    input:focus, select:focus, textarea:focus {
+      outline: 2px solid #3b82f6 !important;
+      outline-offset: 2px !important;
+    }
+  `;
+  document.head.appendChild(styleEl);
+  
+  // Use passive approach to focus handling
+  document.addEventListener('focusin', function(e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') {
+      window.currentlyFocusedElement = e.target;
+      document.body.classList.add('has-keyboard-open');
+    }
+  }, true);
+  
+  document.addEventListener('focusout', function(e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') {
+      // Short delay to allow for switching between inputs
+      setTimeout(() => {
+        if (!document.activeElement || 
+            (document.activeElement.tagName !== 'INPUT' && 
+             document.activeElement.tagName !== 'SELECT' && 
+             document.activeElement.tagName !== 'TEXTAREA')) {
+          document.body.classList.remove('has-keyboard-open');
+          window.currentlyFocusedElement = null;
+        }
+      }, 100);
+    }
+  }, true);
+  
+  // Prevent document touch events from dismissing keyboard
+  document.addEventListener('touchstart', function(e) {
+    if (window.currentlyFocusedElement && 
+        e.target !== window.currentlyFocusedElement && 
+        !window.currentlyFocusedElement.contains(e.target)) {
+      // Only if touching non-input areas
+      if (e.target.tagName !== 'INPUT' && 
+          e.target.tagName !== 'SELECT' && 
+          e.target.tagName !== 'TEXTAREA' &&
+          !e.target.closest('input, select, textarea, label, button')) {
+        // Don't do anything - this prevents dismissal
+        e.stopPropagation();
+      }
+    }
+  }, true);
+}
+
+// Call this function after the document has loaded and whenever rendering UI
+document.addEventListener('DOMContentLoaded', fixMobileKeyboardIssue);
+
+
 function updateButtonUI(processIndex, subprocessIndex) {
   const process = state.processes[processIndex];
   const subprocess = process.subprocesses[subprocessIndex];
