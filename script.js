@@ -32,7 +32,80 @@ window.addEventListener('resize', debounce(function() {
 // Call this after DOM changes that add new inputs
 
 
+function setupMobileInputHandling() {
+  // Add the necessary styles if they don't exist
+  if (!document.getElementById('mobile-input-styles')) {
+    const style = document.createElement('style');
+    style.id = 'mobile-input-styles';
+    style.textContent = `
+      /* Base styles for all inputs to prevent zoom and improve usability */
+      @media (max-width: 768px) {
+        input, select, textarea {
+          font-size: 16px !important; /* Prevents iOS zoom */
+          height: auto;
+          min-height: 44px;
+          margin-bottom: 8px;
+        }
+        
+        /* Add padding when keyboard is open */
+        body.keyboard-open {
+          padding-bottom: 250px !important;
+          height: auto !important;
+        }
+        
+        /* Visual focus indicator */
+        input:focus, select:focus, textarea:focus {
+          outline: 2px solid #3b82f6;
+          outline-offset: 1px;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+  
+  // Apply focus and blur handlers to all inputs in the document
+  const inputs = document.querySelectorAll('input, select, textarea');
+  inputs.forEach(input => {
+    // Remove any existing handlers to prevent duplicates
+    input.removeEventListener('focus', handleInputFocus);
+    input.removeEventListener('blur', handleInputBlur);
+    
+    // Add fresh handlers
+    input.addEventListener('focus', handleInputFocus);
+    input.addEventListener('blur', handleInputBlur);
+  });
+}
 
+function handleInputFocus(e) {
+  // Add class to body for keyboard spacing
+  document.body.classList.add('keyboard-open');
+  
+  // Scroll to make input visible after keyboard appears
+  setTimeout(() => {
+    if (document.activeElement === this) {
+      const rect = this.getBoundingClientRect();
+      const visibleHeight = window.innerHeight;
+      const keyboardHeight = visibleHeight * 0.4; // Estimate keyboard height as 40% of screen
+      
+      if (rect.bottom > visibleHeight - keyboardHeight) {
+        const scrollTo = window.pageYOffset + rect.top - 150;
+        window.scrollTo({
+          top: scrollTo,
+          behavior: 'smooth'
+        });
+      }
+    }
+  }, 300);
+}
+
+function handleInputBlur(e) {
+  // Delay removing the class in case user is moving between inputs
+  setTimeout(() => {
+    if (!document.querySelector('input:focus, select:focus, textarea:focus')) {
+      document.body.classList.remove('keyboard-open');
+    }
+  }, 150);
+}
 
 
 function setupMobileInputs() {
@@ -816,26 +889,7 @@ function renderInterface() {
       }
     `;
     document.head.appendChild(style);
-    
-    // Add document-level touchstart handler to prevent keyboard dismissal
-    document.addEventListener('touchstart', function(e) {
-      // Only if we have a focused input
-      if (document.activeElement && 
-          (document.activeElement.tagName === 'INPUT' || 
-           document.activeElement.tagName === 'SELECT' || 
-           document.activeElement.tagName === 'TEXTAREA')) {
-        
-        // If touch is not on an input-related element
-        if (e.target.tagName !== 'INPUT' && 
-            e.target.tagName !== 'SELECT' && 
-            e.target.tagName !== 'TEXTAREA' && 
-            !e.target.closest('input, select, textarea, label, button')) {
-          
-          // Just stop propagation, don't prevent default (which would break scrolling)
-          e.stopPropagation();
-        }
-      }
-    }, true);
+
   }
   
   // Render the appropriate interface
@@ -2038,19 +2092,8 @@ function renderMobileView() {
   }
   
   // Simple touch handling that won't cause infinite loops
-  const allInputs = mobileView.querySelectorAll('input, select, textarea');
-  allInputs.forEach(input => {
-    // Remove any existing event listeners first to prevent duplicates
-    input.removeEventListener('touchstart', inputTouchHandler);
-    input.removeEventListener('focus', inputFocusHandler);
-    input.removeEventListener('blur', inputBlurHandler);
-    
-    // Add the new event listeners
-    input.addEventListener('touchstart', inputTouchHandler);
-  });
-  
+  setupMobileInputHandling();
   // Restore scroll position
-  window.scrollTo(0, scrollPosition);
 }
 
 let isHandlingFocus = false;
@@ -2284,44 +2327,8 @@ function createSubprocessCard(process, processIndex, subprocess, subprocessIndex
   
   card.appendChild(actionRow);
   
-  // Get all input elements in this specific subprocess card
-  const inputElements = card.querySelectorAll('input, select, textarea');
-  inputElements.forEach(input => {
-    // Clear any existing event listeners by cloning and replacing
-    const newInput = input.cloneNode(true);
-    if (input.parentNode) {
-      input.parentNode.replaceChild(newInput, input);
-      
-      // Add direct, simple event handlers
-      newInput.onfocus = function(e) {
-        // Stop propagation to prevent interference from other handlers
-        e.stopPropagation();
-        
-        // Add class to body for keyboard spacing
-        document.body.classList.add('keyboard-open');
-        
-        // Scroll to make input visible after keyboard appears
-        setTimeout(() => {
-          const rect = this.getBoundingClientRect();
-          const scrollTo = window.pageYOffset + rect.top - 150;
-          window.scrollTo({
-            top: scrollTo,
-            behavior: 'smooth'
-          });
-        }, 300);
-      };
-      
-      // Handle blur event
-      newInput.onblur = function(e) {
-        // Delay removing the class in case user is moving between inputs
-        setTimeout(() => {
-          if (!document.querySelector('input:focus, select:focus, textarea:focus')) {
-            document.body.classList.remove('keyboard-open');
-          }
-        }, 150);
-      };
-    }
-  });
+  // We do NOT clone the inputs here, just leave them as-is
+  // This avoids breaking event handlers
   
   return card;
 }
@@ -2646,38 +2653,15 @@ function showModal(title, content) {
   
   // Important: Apply input handlers to modal inputs
   setTimeout(() => {
-    const inputs = modal.querySelectorAll('input, select, textarea');
+    setupMobileInputHandling();
     
-    // Focus the first input with a delay to prevent keyboard issues
-    if (inputs.length > 0) {
+    // Focus the first input in the modal
+    const firstInput = modal.querySelector('input, select, textarea');
+    if (firstInput) {
       setTimeout(() => {
-        inputs[0].focus();
+        firstInput.focus();
       }, 300);
     }
-    
-    // Apply the same focus/blur handlers to modal inputs
-    inputs.forEach(input => {
-      input.onfocus = function() {
-        document.body.classList.add('keyboard-open');
-        
-        setTimeout(() => {
-          const rect = this.getBoundingClientRect();
-          const scrollY = window.pageYOffset + rect.top - 150;
-          window.scrollTo({
-            top: scrollY,
-            behavior: 'smooth'
-          });
-        }, 300);
-      };
-      
-      input.onblur = function() {
-        setTimeout(() => {
-          if (!document.querySelector('input:focus, select:focus, textarea:focus')) {
-            document.body.classList.remove('keyboard-open');
-          }
-        }, 100);
-      };
-    });
   }, 50);
 }
 
@@ -3649,7 +3633,9 @@ function calculateFrequencies(processes) {
 
 // Initial DOM load event - add sequence initialization
 document.addEventListener('DOMContentLoaded', function() {
-  // Check for saved data in localStorage
+  // Check for saved data in localStorage'
+
+  setupMobileInputHandling();
   const savedData = localStorage.getItem('timeMotionData');
   if (savedData) {
     try {
