@@ -785,43 +785,65 @@ window.addEventListener('resize', debounce(function() {
 
 // Modify the renderInterface function to use the new viewport detection
 function renderInterface() {
+  // Apply mobile-specific styles first
+  if (isMobile && !document.getElementById('subprocess-input-fix')) {
+    const style = document.createElement('style');
+    style.id = 'subprocess-input-fix';
+    style.textContent = `
+      /* Prevent iOS zoom */
+      input, select, textarea {
+        font-size: 16px !important;
+        min-height: 44px;
+      }
+      
+      /* Add padding when keyboard is open */
+      body.keyboard-open {
+        padding-bottom: 300px !important;
+      }
+      
+      /* Ensure inputs are properly visible when focused */
+      .subprocess-card input:focus,
+      .subprocess-card select:focus,
+      .subprocess-card textarea:focus {
+        outline: 2px solid #3b82f6;
+        outline-offset: 1px;
+        background-color: #fff;
+      }
+      
+      /* Prevent unwanted touch events */
+      input, select, textarea {
+        touch-action: manipulation;
+      }
+    `;
+    document.head.appendChild(style);
+    
+    // Add document-level touchstart handler to prevent keyboard dismissal
+    document.addEventListener('touchstart', function(e) {
+      // Only if we have a focused input
+      if (document.activeElement && 
+          (document.activeElement.tagName === 'INPUT' || 
+           document.activeElement.tagName === 'SELECT' || 
+           document.activeElement.tagName === 'TEXTAREA')) {
+        
+        // If touch is not on an input-related element
+        if (e.target.tagName !== 'INPUT' && 
+            e.target.tagName !== 'SELECT' && 
+            e.target.tagName !== 'TEXTAREA' && 
+            !e.target.closest('input, select, textarea, label, button')) {
+          
+          // Just stop propagation, don't prevent default (which would break scrolling)
+          e.stopPropagation();
+        }
+      }
+    }, true);
+  }
+  
+  // Render the appropriate interface
   if (isMobile) {
     renderMobileView();
   } else {
     renderProcesses();
     renderRecordedTimes();
-  }
-  
-  // Set up mobile inputs after rendering
-  if (isMobile) {
-    setupMobileInputs();
-    
-    // Add simple focus/blur handlers to newly rendered inputs
-    document.querySelectorAll('input, select, textarea').forEach(input => {
-      input.onfocus = function() {
-        document.body.classList.add('keyboard-open');
-        
-        // Delay scrolling to let keyboard appear first
-        setTimeout(() => {
-          const rect = this.getBoundingClientRect();
-          const scrollY = window.pageYOffset + rect.top - 150;
-          window.scrollTo({
-            top: scrollY,
-            behavior: 'smooth'
-          });
-        }, 300);
-      };
-      
-      input.onblur = function() {
-        // Delay removing class to handle focus moving between fields
-        setTimeout(() => {
-          // Only remove if no input is focused
-          if (!document.querySelector('input:focus, select:focus, textarea:focus')) {
-            document.body.classList.remove('keyboard-open');
-          }
-        }, 100);
-      };
-    });
   }
 }
 
@@ -2115,91 +2137,46 @@ function createProcessCard(process, processIndex) {
   return card;
 }
 
+// Complete function for creating subprocess cards with fixed input handling
 function createSubprocessCard(process, processIndex, subprocess, subprocessIndex) {
   const card = document.createElement('div');
   card.className = 'subprocess-card';
   
-  // Apply setup mode class if needed
-  if (state.setupMode) {
-    card.className += ' setup-mode-active';
+  // Find if this is the active subprocess
+  let activeSubprocessIndex = -1;
+  for (let i = process.subprocesses.length - 1; i >= 0; i--) {
+    if (!process.subprocesses[i].completed) {
+      activeSubprocessIndex = i;
+      break;
+    }
   }
   
-  // If in sequence mode and this is the current subprocess, highlight it
-  if (process.sequenceMode && process.currentSequenceIndex === subprocessIndex) {
-    card.className += ' active-sequence';
-    card.style.backgroundColor = '#f0f7ff';
-    card.style.borderColor = '#3b82f6';
+  if (activeSubprocessIndex === -1 && process.subprocesses.length > 0) {
+    activeSubprocessIndex = process.subprocesses.length - 1;
   }
   
-  // Subprocess header and individual timer
-  const header = document.createElement('div');
-  header.style.display = 'flex';
-  header.style.justifyContent = 'space-between';
-  header.style.alignItems = 'center';
-  header.style.marginBottom = '8px';
+  const isActive = (subprocessIndex === activeSubprocessIndex);
+  const isButtonEnabled = process.timerRunning && isActive;
   
-  header.innerHTML = `
+  // If this is the active subprocess, add a visual indicator
+  if (isActive) {
+    card.style.borderLeft = '4px solid #10b981';
+  }
+  
+  // Subprocess header and time (more compact)
+  const headerRow = document.createElement('div');
+  headerRow.style.display = 'flex';
+  headerRow.style.justifyContent = 'space-between';
+  headerRow.style.alignItems = 'center';
+  headerRow.style.marginBottom = '8px';
+  headerRow.innerHTML = `
     <div style="font-weight: bold; font-size: 14px;">${subprocess.name}</div>
-    <div class="subprocess-timer" id="mobile-subprocess-timer-${processIndex}-${subprocessIndex}">
-      ${formatTime(subprocess.elapsedTime)}
-    </div>
+    ${subprocess.formattedTime !== '00:00:00' ? 
+      `<span style="color: #10b981; font-weight: bold; font-size: 14px;">${subprocess.formattedTime}</span>` : ''}
   `;
-  card.appendChild(header);
+  card.appendChild(headerRow);
   
-  // Unified timer controls with Start/Stop toggle, Reset, and Lap buttons
-  const timerControls = document.createElement('div');
-  timerControls.className = 'timer-controls unified-controls';
-  timerControls.style.marginBottom = '10px';
-  
-  // Create Start/Stop toggle button
-  const startStopButton = document.createElement('button');
-  startStopButton.className = subprocess.timerRunning ? 'btn-danger control-button' : 'btn-success control-button';
-  startStopButton.textContent = subprocess.timerRunning ? 'Stop' : 'Start';
-  startStopButton.style.flex = '1';
-  startStopButton.onclick = () => {
-    toggleSubprocessTimer(processIndex, subprocessIndex);
-  };
-  
-  // Create Reset button
-  const resetButton = document.createElement('button');
-  resetButton.className = 'btn-secondary control-button';
-  resetButton.textContent = 'Reset';
-  resetButton.style.flex = '1';
-  resetButton.onclick = () => {
-    resetSubprocessTimer(processIndex, subprocessIndex);
-  };
-  
-  // Lap button changes to Next in sequence mode
-  const lapNextButton = document.createElement('button');
-  if (process.sequenceMode) {
-    lapNextButton.className = 'btn-primary control-button';
-    lapNextButton.textContent = 'Next';
-    lapNextButton.onclick = () => moveToNextSubprocess(processIndex);
-  } else {
-    lapNextButton.className = 'btn-primary control-button';
-    lapNextButton.textContent = 'Lap';
-    lapNextButton.onclick = () => recordLap(processIndex, subprocessIndex);
-    lapNextButton.disabled = !subprocess.timerRunning; // Disable if timer is not running
-  }
-  lapNextButton.style.flex = '1';
-  
-  // Add all buttons
-  timerControls.appendChild(startStopButton);
-  timerControls.appendChild(resetButton);
-  timerControls.appendChild(lapNextButton);
-  
-  card.appendChild(timerControls);
-  
-  // Previous recorded time display
-  if (subprocess.formattedTime !== '00:00:00') {
-    const timeDisplay = document.createElement('div');
-    timeDisplay.style.marginBottom = '8px';
-    timeDisplay.style.fontSize = '14px';
-    timeDisplay.innerHTML = `<strong>Last recorded:</strong> <span style="color: #10b981;">${subprocess.formattedTime}</span>`;
-    card.appendChild(timeDisplay);
-  }
-  
-  // Rest of form inputs remain the same
+  // Form inputs in two columns for better space usage
   const form = document.createElement('div');
   form.className = 'subprocess-inputs';
   form.style.marginBottom = '5px';
@@ -2264,34 +2241,6 @@ function createSubprocessCard(process, processIndex, subprocess, subprocessIndex
   inputRow2.appendChild(column4);
   form.appendChild(inputRow2);
   
-
-  const allInputs = card.querySelectorAll('input, select');
-  allInputs.forEach(input => {
-    // Ensure proper focus handling
-    input.addEventListener('touchstart', function(e) {
-      e.stopPropagation(); // Prevent event bubbling
-      e.preventDefault(); // Prevent default touch behavior
-      setTimeout(() => this.focus(), 0); // Focus with a small delay
-    });
-    
-    // Fix iOS focus issues
-    input.addEventListener('focus', function() {
-      // Scroll the element into view with some padding
-      const rect = this.getBoundingClientRect();
-      const scrollY = window.scrollY + rect.top - 150; // 150px padding above
-      window.scrollTo(0, scrollY);
-      
-      // Add class to body to prevent background scrolling
-      document.body.classList.add('input-focused');
-    });
-    
-    input.addEventListener('blur', function() {
-      // Remove the class when input loses focus
-      document.body.classList.remove('input-focused');
-    });
-  });
-
-
   // Remarks field
   const remarksField = document.createElement('div');
   remarksField.innerHTML = `
@@ -2319,7 +2268,60 @@ function createSubprocessCard(process, processIndex, subprocess, subprocessIndex
   `;
   actionRow.appendChild(deleteButtons);
   
+  // Only show lap button if not in sticky header or if sticky header is not showing
+  if (!process.timerRunning || !isActive) {
+    // Lap button
+    const lapButton = document.createElement('button');
+    lapButton.className = isButtonEnabled ? 'btn-primary' : 'btn-secondary';
+    lapButton.textContent = 'Lap';
+    lapButton.style.flex = '1';
+    lapButton.style.height = '32px';
+    lapButton.style.fontSize = '13px';
+    lapButton.disabled = !isButtonEnabled;
+    lapButton.onclick = () => recordLap(processIndex, subprocessIndex);
+    actionRow.appendChild(lapButton);
+  }
+  
   card.appendChild(actionRow);
+  
+  // Get all input elements in this specific subprocess card
+  const inputElements = card.querySelectorAll('input, select, textarea');
+  inputElements.forEach(input => {
+    // Clear any existing event listeners by cloning and replacing
+    const newInput = input.cloneNode(true);
+    if (input.parentNode) {
+      input.parentNode.replaceChild(newInput, input);
+      
+      // Add direct, simple event handlers
+      newInput.onfocus = function(e) {
+        // Stop propagation to prevent interference from other handlers
+        e.stopPropagation();
+        
+        // Add class to body for keyboard spacing
+        document.body.classList.add('keyboard-open');
+        
+        // Scroll to make input visible after keyboard appears
+        setTimeout(() => {
+          const rect = this.getBoundingClientRect();
+          const scrollTo = window.pageYOffset + rect.top - 150;
+          window.scrollTo({
+            top: scrollTo,
+            behavior: 'smooth'
+          });
+        }, 300);
+      };
+      
+      // Handle blur event
+      newInput.onblur = function(e) {
+        // Delay removing the class in case user is moving between inputs
+        setTimeout(() => {
+          if (!document.querySelector('input:focus, select:focus, textarea:focus')) {
+            document.body.classList.remove('keyboard-open');
+          }
+        }, 150);
+      };
+    }
+  });
   
   return card;
 }
