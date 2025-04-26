@@ -26,125 +26,7 @@ window.addEventListener('resize', debounce(function() {
 }, 250)); // 250ms debounce time
 
 
-// Simple, reliable mobile input handling
 
-
-// Call this after DOM changes that add new inputs
-
-
-function setupMobileInputHandling() {
-  // Add the necessary styles if they don't exist
-  if (!document.getElementById('mobile-input-styles')) {
-    const style = document.createElement('style');
-    style.id = 'mobile-input-styles';
-    style.textContent = `
-      /* Base styles for all inputs to prevent zoom and improve usability */
-      @media (max-width: 768px) {
-        input, select, textarea {
-          font-size: 16px !important; /* Prevents iOS zoom */
-          height: auto;
-          min-height: 44px;
-          margin-bottom: 8px;
-        }
-        
-        /* Add padding when keyboard is open */
-        body.keyboard-open {
-          padding-bottom: 250px !important;
-          height: auto !important;
-        }
-        
-        /* Visual focus indicator */
-        input:focus, select:focus, textarea:focus {
-          outline: 2px solid #3b82f6;
-          outline-offset: 1px;
-        }
-      }
-    `;
-    document.head.appendChild(style);
-  }
-  
-  // Apply focus and blur handlers to all inputs in the document
-  const inputs = document.querySelectorAll('input, select, textarea');
-  inputs.forEach(input => {
-    // Remove any existing handlers to prevent duplicates
-    input.removeEventListener('focus', handleInputFocus);
-    input.removeEventListener('blur', handleInputBlur);
-    
-    // Add fresh handlers
-    input.addEventListener('focus', handleInputFocus);
-    input.addEventListener('blur', handleInputBlur);
-  });
-}
-
-function handleInputFocus(e) {
-  // Add class to body for keyboard spacing
-  document.body.classList.add('keyboard-open');
-  
-  // Scroll to make input visible after keyboard appears
-  setTimeout(() => {
-    if (document.activeElement === this) {
-      const rect = this.getBoundingClientRect();
-      const visibleHeight = window.innerHeight;
-      const keyboardHeight = visibleHeight * 0.4; // Estimate keyboard height as 40% of screen
-      
-      if (rect.bottom > visibleHeight - keyboardHeight) {
-        const scrollTo = window.pageYOffset + rect.top - 150;
-        window.scrollTo({
-          top: scrollTo,
-          behavior: 'smooth'
-        });
-      }
-    }
-  }, 300);
-}
-
-function handleInputBlur(e) {
-  // Delay removing the class in case user is moving between inputs
-  setTimeout(() => {
-    if (!document.querySelector('input:focus, select:focus, textarea:focus')) {
-      document.body.classList.remove('keyboard-open');
-    }
-  }, 150);
-}
-
-
-function setupMobileInputs() {
-  // Only add the styles once
-  if (!document.getElementById('mobile-input-styles')) {
-    const style = document.createElement('style');
-    style.id = 'mobile-input-styles';
-    style.textContent = `
-      /* Base styles for all inputs to prevent zoom and improve usability */
-      input, select, textarea {
-        font-size: 16px !important; /* Prevents iOS zoom */
-        height: auto;
-        min-height: 44px;
-        margin-bottom: 8px;
-      }
-      
-      /* Add padding when keyboard is open */
-      body.keyboard-open {
-        padding-bottom: 300px !important;
-      }
-      
-      /* Visual focus indicator */
-      input:focus, select:focus, textarea:focus {
-        outline: 2px solid #3b82f6;
-        outline-offset: 1px;
-      }
-    `;
-    document.head.appendChild(style);
-  }
-}
-
-// Call this function when the page loads and after rendering interface
-document.addEventListener('DOMContentLoaded', setupMobileInputs);
-
-
-
-
-
-// Add this function to capture all form data before view changes
 function captureAllFormData() {
   // Loop through all processes and subprocesses to capture form data
   state.processes.forEach((process, processIndex) => {
@@ -2092,7 +1974,7 @@ function renderMobileView() {
   }
   
   // Simple touch handling that won't cause infinite loops
-  setupMobileInputHandling();
+
   // Restore scroll position
 }
 
@@ -2653,7 +2535,7 @@ function showModal(title, content) {
   
   // Important: Apply input handlers to modal inputs
   setTimeout(() => {
-    setupMobileInputHandling();
+
     
     // Focus the first input in the modal
     const firstInput = modal.querySelector('input, select, textarea');
@@ -3554,14 +3436,87 @@ function showNotification(message, duration = 2000) {
   }, duration);
 }
 
-// Enhanced CSS for notification
-// Add this to your styles.css:
-/*
-
-*/
-
-// This function should be called when the document is ready
-
+function setupImprovedMobileInputHandling() {
+  // Add static styles just once
+  if (!document.getElementById('improved-mobile-styles')) {
+    const style = document.createElement('style');
+    style.id = 'improved-mobile-styles';
+    style.textContent = `
+      /* Ensure proper font size on inputs to prevent zoom on iOS */
+      @media (max-width: 768px) {
+        input, select, textarea, button {
+          font-size: 16px !important;
+          min-height: 44px;
+        }
+        
+        /* Add bottom spacing for keyboard */
+        .keyboard-active {
+          padding-bottom: 40vh !important;
+        }
+        
+        /* Improve focus styles */
+        input:focus, select:focus, textarea:focus {
+          outline: 2px solid #3b82f6;
+          outline-offset: 1px;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+  
+  // Use the Viewport height API when available (modern browsers)
+  if ('visualViewport' in window) {
+    window.visualViewport.addEventListener('resize', function() {
+      // If the viewport height is significantly smaller than the window height,
+      // it likely means the keyboard is open
+      const windowHeight = window.innerHeight;
+      const viewportHeight = window.visualViewport.height;
+      
+      if (windowHeight - viewportHeight > 150) {
+        // Keyboard is likely open
+        document.body.classList.add('keyboard-active');
+        
+        // Ensure the active element is visible
+        if (document.activeElement) {
+          // Get the active element's position
+          const rect = document.activeElement.getBoundingClientRect();
+          
+          // If it would be hidden behind the keyboard, scroll to it
+          const visibleArea = window.visualViewport.height;
+          if (rect.bottom > visibleArea) {
+            const scrollOffset = rect.bottom - visibleArea + 20; // 20px extra padding
+            window.scrollBy({
+              top: scrollOffset,
+              behavior: 'smooth'
+            });
+          }
+        }
+      } else {
+        // Keyboard is likely closed
+        document.body.classList.remove('keyboard-active');
+      }
+    });
+  } else {
+    // Fallback for browsers without VisualViewport API
+    // Use simpler focus/blur method with longer timeouts
+    document.addEventListener('focus', function(e) {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') {
+        document.body.classList.add('keyboard-active');
+      }
+    }, true);
+    
+    document.addEventListener('blur', function(e) {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') {
+        // Use a longer timeout (1000ms) to prevent premature keyboard dismissal
+        setTimeout(() => {
+          if (!document.querySelector('input:focus, select:focus, textarea:focus')) {
+            document.body.classList.remove('keyboard-active');
+          }
+        }, 1000);
+      }
+    }, true);
+  }
+}
 
 // Add calculateFrequencies function (if not already present)
 function calculateFrequencies(processes) {
@@ -3634,8 +3589,8 @@ function calculateFrequencies(processes) {
 // Initial DOM load event - add sequence initialization
 document.addEventListener('DOMContentLoaded', function() {
   // Check for saved data in localStorage'
+  setupImprovedMobileInputHandling();
 
-  setupMobileInputHandling();
   const savedData = localStorage.getItem('timeMotionData');
   if (savedData) {
     try {
