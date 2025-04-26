@@ -47,10 +47,8 @@
     font-weight: 500;
   }
   
-  /* Make sure the content doesn't shift when keyboard appears */
-  body.keyboard-open {
-    position: relative;
-    padding-bottom: 250px !important;
+  body.keyboard-active {
+    padding-bottom: 40vh !important;
     height: auto !important;
   }
   
